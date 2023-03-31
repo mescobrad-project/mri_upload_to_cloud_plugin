@@ -1,9 +1,9 @@
 {
-    "id":"generic-plugin",
-    "name": "Generic Plugin",
-    "description": "this is a generic plugin to be used within MES-CoBraD edge module",
+    "id":"mri_upload_to_cloud_plugin",
+    "name": "mri_upload_to_cloud_plugin",
+    "description": "MES-CoBraD edge module plugin used for uploading defaced and anonymized MRI files to cloud storage.",
     "type": "utils",
     "version": "v0.0.1",
-    "url": "https://github.com/trowdan/generic-plugin",
+    "url": "https://github.com/mescobrad-project/mri_upload_to_cloud_plugin.git",
     "entry-point": "entrypoint.py"
 }
