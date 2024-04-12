@@ -17,7 +17,7 @@ class GenericPlugin(EmptyPlugin):
         # Return the results
         return rows
 
-    def transform_input_data(self, source_name, workspace_id):
+    def transform_input_data(self, source_name, personal_id, workspace_id):
         """Transform input data into table suitable for creating query. Currently only
         filename and workspace are tracked in Trino table. In case that additional
         information should be tracked, also those data should be sent and this function
@@ -26,10 +26,9 @@ class GenericPlugin(EmptyPlugin):
         import pandas as pd
 
         columns = ['source', 'rowid', 'variable', 'value', 'workspace_id']
-        d = {'source': source_name, 'rowid': 0, 'variable': "None", 'value': "None",
+        d = {'source': source_name, 'rowid': 0, 'variable': "PID", 'value': personal_id,
              'workspace_id': workspace_id}
         df = pd.DataFrame(data=d, index=[0], columns=columns)
-
         return df
 
     def upload_data_on_trino(self, schema_name, table_name, data, conn):
@@ -48,11 +47,54 @@ class GenericPlugin(EmptyPlugin):
 
         self.execute_sql_on_trino(sql=sql_statement, conn=conn)
 
-    def upload_depersonalized_MRI_data(self, file, path_to_file, workspace_id):
+    def generate_personal_id(self, personal_data):
+        """Based on the identity, full_name and date of birth."""
+
+        import hashlib
+
+        personal_id = "".join(str(data) for data in personal_data)
+
+        # Remove all whitespaces characters
+        personal_id = "".join(personal_id.split())
+
+        # Generate ID
+        id = hashlib.sha256(bytes(personal_id, "utf-8")).hexdigest()
+        return id
+
+    def create_personal_identifier(self, data_info):
+        import pandas as pd
+        # Generate personal id
+        if all(param is not None for param in [data_info['name'],
+                                               data_info['surname'],
+                                               data_info['date_of_birth'],
+                                               data_info['unique_id']]):
+
+            # Make unified dates, so that different formats of date doesn't change the
+            # final id
+            data_info["date_of_birth"] = pd.to_datetime(data_info["date_of_birth"],
+                                                        dayfirst=True)
+
+            data_info["date_of_birth"] = data_info["date_of_birth"].strftime("%d-%m-%Y")
+
+            # Personal id is made based on name, surname, date date of birth, and national
+            # unique id
+            personal_data = [data_info["name"], data_info["surname"],
+                             data_info["date_of_birth"], data_info["unique_id"]]
+
+            personal_id = self.generate_personal_id(personal_data)
+        else:
+            # TO DO - what is the flow if the data is not provided
+            personal_data = []
+            personal_id = self.generate_personal_id(personal_data)
+
+        return personal_id
+
+    def upload_depersonalized_MRI_data(self, file, path_to_file, data_info):
         """Upload to cloud defaced and anonymized DICOM data."""
         import os
         import boto3
         from botocore.config import Config
+        import pandas as pd
 
         from trino.dbapi import connect
         from trino.auth import BasicAuthentication
@@ -92,9 +134,12 @@ class GenericPlugin(EmptyPlugin):
         # Download defaced and anonymized file
         s3_local.Bucket(self.__OBJ_STORAGE_BUCKET_LOCAL__).download_file(file,
                                                                          path_to_download)
+        # Create personal id
+        personal_id = self.create_personal_identifier(data_info)
 
         # Upload metadata information to Trino
-        data = self.transform_input_data(os.path.basename(file), workspace_id)
+        data = self.transform_input_data(os.path.basename(file), personal_id,
+                                         data_info['workspace_id'])
         self.upload_data_on_trino(schema_name, table_name, data, conn)
 
         # Upload output zip file with defaced and anonymized data
@@ -116,7 +161,7 @@ class GenericPlugin(EmptyPlugin):
         files = input_meta.file_name
         for file in files:
             self.upload_depersonalized_MRI_data(file, path_to_download_data,
-                                                input_meta.workspace_id)
+                                                input_meta.data_info)
 
         shutil.rmtree(path_to_download_data)
 
