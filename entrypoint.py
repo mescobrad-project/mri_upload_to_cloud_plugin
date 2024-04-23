@@ -160,8 +160,11 @@ class GenericPlugin(EmptyPlugin):
 
         files = input_meta.file_name
         for file in files:
-            self.upload_depersonalized_MRI_data(file, path_to_download_data,
-                                                input_meta.data_info)
+            if file is not None:
+                self.upload_depersonalized_MRI_data(file, path_to_download_data,
+                                                    input_meta.data_info)
+            else:
+                continue
 
         shutil.rmtree(path_to_download_data)
 
