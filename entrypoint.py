@@ -17,7 +17,7 @@ class GenericPlugin(EmptyPlugin):
         # Return the results
         return rows
 
-    def transform_input_data(self, source_name, personal_id, workspace_id):
+    def transform_input_data(self, source_name, personal_id, workspace_id, MRN):
         """Transform input data into table suitable for creating query. Currently only
         filename and workspace are tracked in Trino table. In case that additional
         information should be tracked, also those data should be sent and this function
@@ -26,9 +26,10 @@ class GenericPlugin(EmptyPlugin):
         import pandas as pd
 
         columns = ['source', 'rowid', 'variable', 'value', 'workspace_id']
-        d = {'source': source_name, 'rowid': 0, 'variable': "PID", 'value': personal_id,
-             'workspace_id': workspace_id}
-        df = pd.DataFrame(data=d, index=[0], columns=columns)
+        d = {'source': [source_name, source_name], 'rowid': [0,0], 'variable': ["PID", "MRN"],
+            'value': [personal_id, MRN], 'workspace_id': [workspace_id, workspace_id]}
+
+        df = pd.DataFrame(data=d, index=[0, 1], columns=columns)
         return df
 
     def upload_data_on_trino(self, schema_name, table_name, data, conn):
@@ -139,7 +140,8 @@ class GenericPlugin(EmptyPlugin):
 
         # Upload metadata information to Trino
         data = self.transform_input_data(os.path.basename(file), personal_id,
-                                         data_info['workspace_id'])
+                                         data_info['workspace_id'],
+                                         data_info['MRN'])
         self.upload_data_on_trino(schema_name, table_name, data, conn)
 
         # Upload output zip file with defaced and anonymized data
