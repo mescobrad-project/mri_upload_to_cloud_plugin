@@ -17,19 +17,43 @@ class GenericPlugin(EmptyPlugin):
         # Return the results
         return rows
 
-    def transform_input_data(self, source_name, personal_id, workspace_id):
+    def transform_input_data(self, source_name, personal_id, workspace_id, MRN,
+                             metadata_file_name):
         """Transform input data into table suitable for creating query. Currently only
         filename and workspace are tracked in Trino table. In case that additional
         information should be tracked, also those data should be sent and this function
         should be updated accordingly."""
 
         import pandas as pd
+        start_data = {
+            "PID": [personal_id]
+        }
+        data_df = pd.DataFrame(data=start_data)
 
-        columns = ['source', 'rowid', 'variable', 'value', 'workspace_id']
-        d = {'source': source_name, 'rowid': 0, 'variable': "PID", 'value': personal_id,
-             'workspace_id': workspace_id}
-        df = pd.DataFrame(data=d, index=[0], columns=columns)
-        return df
+        if MRN is not None:
+            data_df["MRN"] = MRN
+
+        if metadata_file_name is not None:
+            data_df["metadata_file_name"] = metadata_file_name
+
+        # Add rowid column representing id of the row in the file
+        data_df["rowid"] = data_df.index + 1
+
+         # Insert source column representing name of the source file
+        data_df.insert(0, "source", source_name)
+
+        # Transform table into table with 5 columns: source,
+        # rowid, variable_name, variable_value, workspace_id
+        data_df = data_df.melt(id_vars=["source","rowid"])
+        data_df = data_df.sort_values(by=['rowid'])
+
+        # As a variable values type string is expected
+        data_df = data_df.astype({"value":"str"})
+
+        # Add workspace id into workspace column of the table
+        data_df.insert(4, "workspace_id", workspace_id)
+
+        return data_df
 
     def upload_data_on_trino(self, schema_name, table_name, data, conn):
         """Create sql statement for inserting data and update
@@ -94,7 +118,7 @@ class GenericPlugin(EmptyPlugin):
         import os
         import boto3
         from botocore.config import Config
-        import pandas as pd
+        from io import BytesIO
 
         from trino.dbapi import connect
         from trino.auth import BasicAuthentication
@@ -131,6 +155,14 @@ class GenericPlugin(EmptyPlugin):
 
         path_to_download = os.path.join(path_to_file, os.path.basename(file))
 
+        # Metadata file name
+        metadata_file_template = "{name}.json"
+        if data_info["metadata_json_file"] is not None:
+            metadata_file_name = metadata_file_template.format(
+                name=os.path.splitext(os.path.basename(file))[0])
+        else:
+            metadata_file_name = None
+
         # Download defaced and anonymized file
         s3_local.Bucket(self.__OBJ_STORAGE_BUCKET_LOCAL__).download_file(file,
                                                                          path_to_download)
@@ -139,11 +171,20 @@ class GenericPlugin(EmptyPlugin):
 
         # Upload metadata information to Trino
         data = self.transform_input_data(os.path.basename(file), personal_id,
-                                         data_info['workspace_id'])
+                                         data_info['workspace_id'],
+                                         data_info['MRN'],
+                                         metadata_file_name)
         self.upload_data_on_trino(schema_name, table_name, data, conn)
 
         # Upload output zip file with defaced and anonymized data
         s3.Bucket(self.__OBJ_STORAGE_BUCKET__).upload_file(path_to_download, file)
+
+        # Upload metadata file
+        if metadata_file_name is not None:
+            obj_name_metadata = f"metadata_files/{metadata_file_name}"
+            s3.Bucket(self.__OBJ_STORAGE_BUCKET__).upload_fileobj(
+                BytesIO(data_info["metadata_json_file"]), obj_name_metadata,
+                ExtraArgs={'ContentType': "text/json"})
 
 
         print("File is uploaded on the cloud storage.")
