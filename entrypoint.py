@@ -30,8 +30,8 @@ class GenericPlugin(EmptyPlugin):
         }
         data_df = pd.DataFrame(data=start_data)
 
-        if MRN is not None:
-            data_df["MRN"] = MRN
+
+        data_df["pseudoMRN"] = self.calculate_pseudoMRN(MRN, workspace_id)
 
         if metadata_file_name is not None:
             data_df["metadata_file_name"] = metadata_file_name
@@ -70,6 +70,20 @@ class GenericPlugin(EmptyPlugin):
             .format(schema_name=schema_name, table_name=table_name, data=data_to_insert)
 
         self.execute_sql_on_trino(sql=sql_statement, conn=conn)
+
+    def calculate_pseudoMRN(self, mrn, workspace_id):
+        import hashlib
+
+        if mrn is None:
+            pseudoMRN = None
+        else:
+            personalMRN = [mrn, workspace_id]
+            personal_mrn = "".join(str(data) for data in personalMRN)
+
+            # Generate ID
+            pseudoMRN = hashlib.sha256(bytes(personal_mrn, "utf-8")).hexdigest()
+
+        return pseudoMRN
 
     def generate_personal_id(self, personal_data):
         """Based on the identity, full_name and date of birth."""
