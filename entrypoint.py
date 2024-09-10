@@ -127,7 +127,7 @@ class GenericPlugin(EmptyPlugin):
 
         return personal_id
 
-    def upload_depersonalized_MRI_data(self, file, path_to_file, data_info):
+    def upload_depersonalized_MRI_data(self, file, path_to_download, data_info):
         """Upload to cloud defaced and anonymized DICOM data."""
         import os
         import boto3
@@ -167,8 +167,6 @@ class GenericPlugin(EmptyPlugin):
         # Get the table name
         table_name = self.__OBJ_STORAGE_TABLE__.replace("-", "_")
 
-        path_to_download = os.path.join(path_to_file, os.path.basename(file))
-
         # Metadata file name
         metadata_file_template = "{name}.json"
         if data_info["metadata_json_file"] is not None:
@@ -178,8 +176,8 @@ class GenericPlugin(EmptyPlugin):
             metadata_file_name = None
 
         # Download defaced and anonymized file
-        s3_local.Bucket(self.__OBJ_STORAGE_BUCKET_LOCAL__).download_file(file,
-                                                                         path_to_download)
+        s3_local.Bucket(self.__OBJ_STORAGE_BUCKET_LOCAL__).download_file(
+            file, path_to_download)
         # Create personal id
         personal_id = self.create_personal_identifier(data_info)
 
@@ -200,27 +198,34 @@ class GenericPlugin(EmptyPlugin):
                 BytesIO(data_info["metadata_json_file"]), obj_name_metadata,
                 ExtraArgs={'ContentType': "text/json"})
 
-
         print("File is uploaded on the cloud storage.")
 
 
     def action(self, input_meta: PluginExchangeMetadata = None) -> PluginActionResponse:
         import os
-        import shutil
+        import logging
 
-        path_to_download_data = "mescobrad_edge/plugins/mri_upload_to_cloud_plugin/anonymize_files/"
+        try:
+            path_to_download_data = "mescobrad_edge/plugins/mri_upload_to_cloud_plugin/anonymize_files/"
 
-        # create temporary folder for storing downloaded files
-        os.makedirs(path_to_download_data, exist_ok=True)
+            path_to_download = None
 
-        files = input_meta.file_name
-        for file in files:
+            # create temporary folder for storing downloaded files
+            os.makedirs(path_to_download_data, exist_ok=True)
+
+            file = input_meta.file_name
             if file is not None:
-                self.upload_depersonalized_MRI_data(file, path_to_download_data,
+                path_to_download = os.path.join(path_to_download_data,
+                                                os.path.basename(file))
+                self.upload_depersonalized_MRI_data(file, path_to_download,
                                                     input_meta.data_info)
-            else:
-                continue
 
-        shutil.rmtree(path_to_download_data)
+        except Exception as e:
+            logging.error(e)
+
+        finally:
+            if path_to_download is not None \
+                and os.path.exists(path_to_download):
+                os.remove(path_to_download)
 
         return PluginActionResponse()
