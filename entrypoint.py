@@ -121,9 +121,7 @@ class GenericPlugin(EmptyPlugin):
 
             personal_id = self.generate_personal_id(personal_data)
         else:
-            # TO DO - what is the flow if the data is not provided
-            personal_data = []
-            personal_id = self.generate_personal_id(personal_data)
+            personal_id = None
 
         return personal_id
 
